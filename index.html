@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="RandoExplore" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <title>RandoExplore</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; background: #000; color: #00ffcc; font-family: 'Courier New', monospace; overflow-x: hidden; }
+    #root { height: 100%; }
+    .app { display: flex; flex-direction: column; height: 100%; max-width: 480px; margin: 0 auto; position: relative; }
+    
+    /* Glitch overlay */
+    .scanlines { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 100; background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,255,204,0.03) 2px, rgba(0,255,204,0.03) 4px); }
+    .noise { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 99; opacity: 0.04; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+
+    header { padding: 20px 16px 10px; text-align: center; background: linear-gradient(180deg, #0a0a0a, #111); position: relative; overflow: hidden; }
+    .glitch { position: relative; font-size: 1.8rem; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; animation: glitch 2.5s infinite; }
+    .glitch::before, .glitch::after { content: attr(data-text); position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+    .glitch::before { left: 2px; text-shadow: -2px 0 #ff00aa; clip: rect(24px, 550px, 90px, 0); animation: glitch-anim 2s infinite linear alternate-reverse; }
+    .glitch::after { left: -2px; text-shadow: -2px 0 #00ffcc; clip: rect(85px, 550px, 140px, 0); animation: glitch-anim2 3s infinite linear alternate-reverse; }
+    @keyframes glitch { 0%, 100% { text-shadow: 2px 0 #ff00aa, -2px 0 #00ffcc; } 50% { text-shadow: -2px 0 #ff00aa, 2px 0 #00ffcc; } }
+    @keyframes glitch-anim { 0% { clip: rect(31px, 9999px, 94px, 0); } 20% { clip: rect(62px, 9999px, 42px, 0); } 40% { clip: rect(16px, 9999px, 78px, 0); } 60% { clip: rect(89px, 9999px, 13px, 0); } 80% { clip: rect(45px, 9999px, 67px, 0); } 100% { clip: rect(12px, 9999px, 99px, 0); } }
+    @keyframes glitch-anim2 { 0% { clip: rect(65px, 9999px, 100px, 0); } 25% { clip: rect(28px, 9999px, 55px, 0); } 50% { clip: rect(92px, 9999px, 21px, 0); } 75% { clip: rect(14px, 9999px, 83px, 0); } 100% { clip: rect(47px, 9999px, 39px, 0); } }
+
+    .tagline { font-size: 0.75rem; opacity: 0.6; margin-top: 4px; letter-spacing: 1px; }
+
+    /* Rotating monochrome globe */
+    .globe-container { height: 180px; display: flex; justify-content: center; align-items: center; margin: 10px 0; position: relative; }
+    .globe { width: 140px; height: 140px; border-radius: 50%; background: radial-gradient(circle at 30% 30%, #00ffcc 0%, #008866 40%, #003333 70%, #000 100%); position: relative; animation: rotateGlobe 20s linear infinite; box-shadow: 0 0 30px rgba(0,255,204,0.4), inset 0 0 40px rgba(0,255,204,0.2); overflow: hidden; }
+    .globe::before { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(90deg, transparent 0px, transparent 8px, rgba(0,255,204,0.15) 8px, rgba(0,255,204,0.15) 10px), repeating-linear-gradient(0deg, transparent 0px, transparent 8px, rgba(0,255,204,0.1) 8px, rgba(0,255,204,0.1) 10px); border-radius: 50%; animation: rotateTexture 40s linear infinite reverse; }
+    .globe::after { content: ''; position: absolute; width: 100%; height: 100%; border-radius: 50%; background: radial-gradient(circle at 50% 50%, transparent 40%, rgba(0,0,0,0.6) 100%); }
+    @keyframes rotateGlobe { from { transform: rotateY(0deg); } to { transform: rotateY(360deg); } }
+    @keyframes rotateTexture { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+    .controls { padding: 12px 16px; background: rgba(10,10,10,0.9); display: flex; flex-direction: column; gap: 12px; border-top: 1px solid #00ffcc33; border-bottom: 1px solid #00ffcc33; }
+    input[type="text"] { padding: 12px; border-radius: 4px; border: 1px solid #00ffcc55; background: #000; color: #00ffcc; font-family: inherit; font-size: 0.9rem; width: 100%; outline: none; }
+    input[type="text"]:focus { border-color: #00ffcc; box-shadow: 0 0 10px #00ffcc33; }
+    label { font-size: 0.85rem; display: flex; flex-direction: column; gap: 6px; letter-spacing: 0.5px; }
+    input[type="range"] { width: 100%; accent-color: #00ffcc; height: 4px; }
+    .buttons { display: flex; gap: 8px; }
+    button { flex: 1; padding: 12px 6px; border: 1px solid #00ffcc; border-radius: 4px; background: transparent; color: #00ffcc; font-family: inherit; font-weight: 600; font-size: 0.8rem; letter-spacing: 1px; text-transform: uppercase; cursor: pointer; position: relative; overflow: hidden; transition: all 0.2s; }
+    button:hover:not(:disabled) { background: #00ffcc11; box-shadow: 0 0 15px #00ffcc44; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    button:active { transform: scale(0.97); }
+    .status { text-align: center; font-size: 0.8rem; opacity: 0.7; min-height: 1.2em; font-family: inherit; }
+
+    .map-wrap { flex: 1; min-height: 200px; position: relative; border-top: 1px solid #00ffcc22; }
+    .result { padding: 12px 16px; background: #0a0a0a; text-align: center; border-top: 1px solid #00ffcc33; }
+    .actions { display: flex; gap: 8px; margin-top: 10px; }
+    .actions button { background: #00ffcc11; }
+    footer { padding: 10px 16px 20px; text-align: center; font-size: 0.7rem; opacity: 0.5; background: #000; }
+    .leaflet-container { background: #000 !important; height: 100%; width: 100%; filter: grayscale(100%) contrast(1.2) hue-rotate(140deg); }
+    .leaflet-control-attribution { display: none; }
+  </style>
+</head>
+<body>
+  <div class="scanlines"></div>
+  <div class="noise"></div>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <script>
+    const { useState, useEffect, useCallback, useRef } = React;
+
+    function secureRandom() {
+      const arr = new Uint32Array(1);
+      crypto.getRandomValues(arr);
+      return arr[0] / (0xffffffff + 1);
+    }
+
+    function randomPointInRadius(lat, lon, radiusMeters) {
+      const earthRadius = 6371000;
+      const r = radiusMeters * Math.sqrt(secureRandom());
+      const theta = secureRandom() * 2 * Math.PI;
+      const dLat = (r * Math.cos(theta)) / earthRadius;
+      const dLon = (r * Math.sin(theta)) / (earthRadius * Math.cos((lat * Math.PI) / 180));
+      return {
+        lat: lat + (dLat * 180) / Math.PI,
+        lon: lon + (dLon * 180) / Math.PI,
+      };
+    }
+
+    function findDensityPoint(lat, lon, radiusMeters, type, sampleCount = 500) {
+      const points = [];
+      for (let i = 0; i < sampleCount; i++) {
+        points.push(randomPointInRadius(lat, lon, radiusMeters));
+      }
+      const neighborhood = radiusMeters * 0.18;
+      let best = points[0];
+      let bestScore = type === 'attractor' ? -Infinity : Infinity;
+
+      for (const p of points) {
+        let count = 0;
+        for (const q of points) {
+          const dLat = (p.lat - q.lat) * (Math.PI / 180) * 6371000;
+          const dLon = (p.lon - q.lon) * (Math.PI / 180) * 6371000 * Math.cos((p.lat * Math.PI) / 180);
+          const dist = Math.sqrt(dLat * dLat + dLon * dLon);
+          if (dist < neighborhood) count++;
+        }
+        if (type === 'attractor' && count > bestScore) {
+          bestScore = count;
+          best = p;
+        } else if (type === 'void' && count < bestScore) {
+          bestScore = count;
+          best = p;
+        }
+      }
+      return best;
+    }
+
+    function App() {
+      const [position, setPosition] = useState(null);
+      const [radius, setRadius] = useState(2000);
+      const [intention, setIntention] = useState('');
+      const [target, setTarget] = useState(null);
+      const [status, setStatus] = useState('Locating…');
+      const [loading, setLoading] = useState(false);
+      const mapRef = useRef(null);
+      const mapInstance = useRef(null);
+      const circleRef = useRef(null);
+      const targetMarker = useRef(null);
+
+      useEffect(() => {
+        if (!navigator.geolocation) {
+          setStatus('Geolocation not supported');
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const coords = [pos.coords.latitude, pos.coords.longitude];
+            setPosition(coords);
+            setStatus('Ready');
+          },
+          (err) => setStatus('Location permission denied or error'),
+          { enableHighAccuracy: true, timeout: 15000 }
+        );
+      }, []);
+
+      useEffect(() => {
+        if (!position || !mapRef.current || mapInstance.current) return;
+
+        const map = L.map(mapRef.current, { zoomControl: true, attributionControl: false }).setView(position, 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '',
+          maxZoom: 19
+        }).addTo(map);
+
+        L.marker(position).addTo(map).bindPopup('You are here');
+        circleRef.current = L.circle(position, {
+          radius: radius,
+          color: '#00ffcc',
+          fillColor: '#00ffcc',
+          fillOpacity: 0.06,
+          weight: 1
+        }).addTo(map);
+
+        mapInstance.current = map;
+        setTimeout(() => map.invalidateSize(), 150);
+      }, [position]);
+
+      useEffect(() => {
+        if (circleRef.current) {
+          circleRef.current.setRadius(radius);
+        }
+      }, [radius]);
+
+      useEffect(() => {
+        if (!mapInstance.current || !target) return;
+        if (targetMarker.current) {
+          mapInstance.current.removeLayer(targetMarker.current);
+        }
+        targetMarker.current = L.marker([target.lat, target.lon])
+          .addTo(mapInstance.current)
+          .bindPopup(intention ? `Intention: ${intention}` : 'Random point');
+        mapInstance.current.panTo([target.lat, target.lon]);
+      }, [target, intention]);
+
+      const generate = useCallback((type) => {
+        if (!position) return;
+        setLoading(true);
+        setStatus(`Generating ${type}…`);
+        setTimeout(() => {
+          const [lat, lon] = position;
+          let point;
+          if (type === 'blind') {
+            point = randomPointInRadius(lat, lon, radius);
+          } else {
+            point = findDensityPoint(lat, lon, radius, type);
+          }
+          setTarget(point);
+          setStatus(`${type.charAt(0).toUpperCase() + type.slice(1)} ready`);
+          setLoading(false);
+        }, 40);
+      }, [position, radius]);
+
+      const openInMaps = (service) => {
+        if (!target) return;
+        const url = service === 'apple'
+          ? `https://maps.apple.com/?daddr=${target.lat},${target.lon}&dirflg=w`
+          : `https://www.google.com/maps/dir/?api=1&destination=${target.lat},${target.lon}&travelmode=walking`;
+        window.open(url, '_blank');
+      };
+
+      return React.createElement('div', { className: 'app' },
+        React.createElement('header', null,
+          React.createElement('div', { className: 'glitch', 'data-text': 'RANDOEXPLORE' }, 'RANDOEXPLORE'),
+          React.createElement('p', { className: 'tagline' }, 'QUANTUM EXPLORATION INTERFACE')
+        ),
+        React.createElement('div', { className: 'globe-container' },
+          React.createElement('div', { className: 'globe' })
+        ),
+        React.createElement('div', { className: 'controls' },
+          React.createElement('input', {
+            type: 'text',
+            placeholder: 'INTENTION (OPTIONAL)',
+            value: intention,
+            onChange: (e) => setIntention(e.target.value)
+          }),
+          React.createElement('label', null,
+            `RADIUS: ${(radius / 1000).toFixed(1)} KM`,
+            React.createElement('input', {
+              type: 'range',
+              min: 500,
+              max: 10000,
+              step: 100,
+              value: radius,
+              onChange: (e) => setRadius(Number(e.target.value))
+            })
+          ),
+          React.createElement('div', { className: 'buttons' },
+            React.createElement('button', { disabled: !position || loading, onClick: () => generate('blind') }, 'Blind'),
+            React.createElement('button', { disabled: !position || loading, onClick: () => generate('attractor') }, 'Attractor'),
+            React.createElement('button', { disabled: !position || loading, onClick: () => generate('void') }, 'Void')
+          ),
+          React.createElement('p', { className: 'status' }, status)
+        ),
+        position && React.createElement('div', { className: 'map-wrap', ref: mapRef }),
+        target && React.createElement('div', { className: 'result' },
+          React.createElement('p', null,
+            React.createElement('strong', null, `${target.lat.toFixed(6)}, ${target.lon.toFixed(6)}`)
+          ),
+          React.createElement('div', { className: 'actions' },
+            React.createElement('button', { onClick: () => openInMaps('apple') }, 'Apple Maps'),
+            React.createElement('button', { onClick: () => openInMaps('google') }, 'Google Maps')
+          )
+        ),
+        React.createElement('footer', null,
+          React.createElement('small', null, 'ADD TO HOME SCREEN • RESPECT PRIVATE PROPERTY')
+        )
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(React.createElement(App));
+  </script>
+</body>
+</html>
